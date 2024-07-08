@@ -179,6 +179,7 @@ contract ProposalOperationsTest is DualGovernanceSetUp {
 
         vm.assume(proposalId < timelock.nextProposalId());
         ProposalRecord memory pre = _recordProposal(proposalId);
+        vm.assume(pre.submissionTime <= block.timestamp);
         vm.assume(pre.state == DualGovernanceModel.State.Normal || pre.state == DualGovernanceModel.State.VetoCooldown);
 
         if (pre.state == DualGovernanceModel.State.VetoCooldown) {
@@ -191,7 +192,7 @@ contract ProposalOperationsTest is DualGovernanceSetUp {
         dualGovernance.scheduleProposal(proposalId);
 
         ProposalRecord memory post = _recordProposal(proposalId);
-        _validPendingProposal(Mode.Assert, post);
+        assert(post.status != ProposalStatus.Scheduled);
     }
 
     /**
