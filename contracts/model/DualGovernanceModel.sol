@@ -63,7 +63,7 @@ contract DualGovernanceModel {
      * Proposals can be submitted when in the Normal state or during Veto Signalling; however they cannot be executed in Veto Signalling.
      */
     function submitProposal(ExecutorCall[] calldata calls) external returns (uint256 proposalId) {
-        activateNextState();
+        // activateNextState();
 
         require(proposers[msg.sender], "Caller is not authorized to submit proposals.");
         require(calls.length != 0, "Empty calls.");
@@ -80,14 +80,14 @@ contract DualGovernanceModel {
      * Scheduling is allowed in Normal and Veto Cooldown states to prepare proposals for decision-making.
      */
     function scheduleProposal(uint256 proposalId) external {
-        activateNextState();
+        // activateNextState();
 
         require(
             currentState == State.Normal || currentState == State.VetoCooldown,
             "Proposals can only be scheduled in Normal or Veto Cooldown states."
         );
         if (currentState == State.VetoCooldown) {
-            (,,, uint256 submissionTime,) = emergencyProtectedTimelock.proposals(proposalId);
+            (,, uint256 submissionTime,,) = emergencyProtectedTimelock.proposals(proposalId);
             require(
                 submissionTime < lastVetoSignallingTime,
                 "Proposal submitted after the last time Veto Signalling state was entered."
@@ -99,7 +99,7 @@ contract DualGovernanceModel {
 
     // Cancel all non-executed proposals.
     function cancelAllPendingProposals() external {
-        activateNextState();
+        // activateNextState();
 
         require(admin_proposers[msg.sender], "Caller is not admin proposers.");
         require(
