@@ -110,6 +110,13 @@ if [ "$SCRIPT_TESTS" == true ]; then
         "EscrowOperationsTest.testCannotUnlockBeforeMinLockTime"
         "EscrowOperationsTest.testCannotLockUnlockInRageQuitEscrowState"
         "EscrowOperationsTest.testCannotWithdrawBeforeEthClaimTimelockElapsed"
+        "ProposalOperationsTest.testCannotProposeInInvalidState"
+        "ProposalOperationsTest.testCannotScheduleInInvalidStates"
+        "ProposalOperationsTest.testCannotScheduleSubmissionAfterLastVetoSignalling"
+        "ProposalOperationsTest.testCanceledOrExecutedActionsCannotBeRescheduled"
+        "ProposalOperationsTest.testCannotScheduleBeforeMinTimelock"
+        "ProposalOperationsTest.testSchedulingSuccess"
+        "ProposalOperationsTest.testCannotExecuteBeforeEmergencyProtectionTimelock"
     )
 elif [ "$CUSTOM_TESTS" != 0 ]; then
     test_list=( "${@:${CUSTOM_TESTS}}" )
