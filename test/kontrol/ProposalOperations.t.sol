@@ -272,4 +272,37 @@ contract ProposalOperationsTest is DualGovernanceSetUp {
         ProposalRecord memory post = _recordProposal(proposalId);
         _validScheduledProposal(Mode.Assert, post);
     }
+
+    /**
+     * Test that only admin proposers can cancel proposals.
+     */
+    function testOnlyAdminProposersCanCancelProposals() external {
+        _timelockSetup();
+
+        uint256 numProposals = timelock.nextProposalId();
+        vm.assume(numProposals > 0);
+        for (uint256 proposalId = 0; proposalId < numProposals; proposalId++) {
+            _proposalStorageSetup(proposalId);
+        }
+        _commonAssumptions();
+
+        address adminProposer = address(uint160(uint256(keccak256("adminProposer"))));
+        vm.assume(dualGovernance.admin_proposers(adminProposer));
+        address proposer = address(uint160(uint256(keccak256("proposer"))));
+        vm.assume(!dualGovernance.admin_proposers(proposer));
+
+        DualGovernanceModel.State state = dualGovernance.currentState();
+        vm.assume(state != DualGovernanceModel.State.Normal);
+        vm.assume(state != DualGovernanceModel.State.VetoCooldown);
+        vm.assume(state != DualGovernanceModel.State.RageQuit);
+
+        // Cancel as a non-admin proposer
+        vm.prank(proposer);
+        vm.expectRevert("Caller is not admin proposers.");
+        dualGovernance.cancelAllPendingProposals();
+
+        // Cancel as an admin proposer
+        vm.prank(adminProposer);
+        dualGovernance.cancelAllPendingProposals();
+    }
 }
