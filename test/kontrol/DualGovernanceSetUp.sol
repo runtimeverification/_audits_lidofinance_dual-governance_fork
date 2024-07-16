@@ -64,7 +64,7 @@ contract DualGovernanceSetUp is StorageSetup {
         // ?WORD9: claimedETH
         // ?WORD10: unfinalizedShares
         // ?WORD11: finalizedETH
-        // ?WORD12: storageStatus
+        // ?WORD12: batchesQueue
         // ?WORD13: rageQuitExtensionDelay
         // ?WORD14: rageQuitWithdrawalsTimelock
         // ?WORD15: rageQuitTimelockStartedAt
@@ -75,7 +75,7 @@ contract DualGovernanceSetUp is StorageSetup {
         // ?WORD17: claimedETH
         // ?WORD18: unfinalizedShares
         // ?WORD19: finalizedETH
-        // ?WORD20: storageStatus
+        // ?WORD20: batchesQueue
         // ?WORD21: rageQuitExtensionDelay
         // ?WORD22: rageQuitWithdrawalsTimelock
         // ?WORD23: rageQuitTimelockStartedAt
