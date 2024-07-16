@@ -177,6 +177,12 @@ contract StorageSetup is KontrolTest {
             }
             _storeBytes32(address(_escrow), 2, slot2);
         }
+        // Slot 5
+        {
+            uint256 storageStatus = kevm.freshUInt(16);
+            vm.assume(storageStatus <= 2);
+            _storeBytes32(address(_escrow), 5, bytes32(storageStatus));
+        }
         // Slot 9
         {
             uint32 rageQuitExtensionDelay = uint32(kevm.freshUInt(4));
