@@ -27,11 +27,12 @@ module LIDO-LEMMAS
     rule ethUpperBound => 2 ^Int ethMaxWidth
  // ----------------------------------------
 
-    // chop and -Int
+    // chop and +Int
     rule chop (A +Int B) ==Int 0 => A ==Int (-1) *Int B
       requires #rangeUInt(256, A) andBool #rangeUInt(256, (-1) *Int B)
       [concrete(B), simplification, comm]
 
+    // chop and -Int
     rule chop (0 -Int A) ==Int B => A ==Int (pow256 -Int B) modInt pow256
       requires #rangeUInt(256, A) andBool #rangeUInt(256, B)
       [concrete(B), simplification, comm]
@@ -72,10 +73,17 @@ module LIDO-LEMMAS
      andBool (log2Int (X +Int 1)) /Int 8 <=Int lengthBytes(BA) andBool lengthBytes(BA) <=Int 32
      [simplification, concrete(X), preserves-definedness]
 
-    // KEVM simplification
-    rule #asWord(WS) >>Int M => #asWord(#range(WS, 0, lengthBytes(WS) -Int (M /Int 8) ))
-    requires 0 <=Int M andBool M modInt 8 ==Int 0
-    [simplification, preserves-definedness]
+    // #asWord
+    rule #asWord ( B1 +Bytes B2 ) => #asWord ( B2 )
+        requires #asWord ( B1 ) ==Int 0
+        [simplification, concrete(B1)]
+
+    rule #asWord( BA ) >>Int N => #asWord( #range ( BA, 0, lengthBytes( BA ) -Int ( N /Int 8 ) ) )
+    requires 0 <=Int N andBool N modInt 8 ==Int 0
+    [simplification, concrete(N), preserves-definedness]
+
+    // >>Int
+    rule [shift-to-div]: X >>Int N => X /Int (2 ^Int N) [simplification(60), concrete(N)]
 
     //
     // .Bytes
@@ -202,14 +210,6 @@ module LIDO-LEMMAS
       requires #rangeUInt(256, X) andBool 0 <Int Y
       [simplification, preserves-definedness]
 
-    rule 0 <=Int keccak(X) => true [simplification, smt-lemma]
-
-    rule X >>Int N => X /Int (2 ^Int N) [simplification, concrete(N)]
-
-    rule #asWord ( BUF1 +Bytes BUF2 ) => #asWord ( BUF2 )
-        requires #asWord ( BUF1 ) ==Int 0
-        [simplification, concrete(BUF1)]
-
     //
     //  Overflows and ranges
     //
@@ -305,6 +305,34 @@ module LIDO-LEMMAS
     // #lookup
     //
     rule M:Map [ K1 <- _ ] [ K2 <- V2 ] [ K1 <- V3 ] => M:Map [ K2 <- V2 ] [ K1 <- V3 ] [simplification]
+
+    //
+    // keccak assumptions: these assumptions are not sound in principle, but are
+    // required for verification - they should ideally be collected at the end of execution
+    //
+
+    rule 0 <=Int keccak( _ )             => true [simplification, smt-lemma]
+    rule         keccak( _ ) <Int pow256 => true [simplification, smt-lemma]
+
+    // keccak does not equal a concrete value
+    rule [keccak-eq-conc-false]: keccak(_A)  ==Int _B => false [symbolic(_A), concrete(_B), simplification(30), comm]
+    rule [keccak-neq-conc-true]: keccak(_A) =/=Int _B => true  [symbolic(_A), concrete(_B), simplification(30), comm]
+    rule [keccak-eq-conc-false-ml-lr]: { keccak(A) #Equals B } => { true #Equals keccak(A) ==Int B } [symbolic(A), concrete(B), simplification]
+    rule [keccak-eq-conc-false-ml-rl]: { B #Equals keccak(A) } => { true #Equals keccak(A) ==Int B } [symbolic(A), concrete(B), simplification]
+
+    // keccak is injective
+    rule [keccak-inj]: keccak(A) ==Int keccak(B) => A ==K B [simplification]
+    rule [keccak-inj-ml]: { keccak(A) #Equals keccak(B) } => { true #Equals A ==K B } [simplification]
+
+    // chop of negative keccak
+    rule chop (0 -Int keccak(BA)) => pow256 -Int keccak(BA)
+       [simplification]
+
+    // keccak cannot equal a number outside of its range
+    rule { X #Equals keccak (_) } => #Bottom
+      requires X <Int 0 orBool X >=Int pow256
+      [concrete(X), simplification]
+
 
     //
     // Rules
