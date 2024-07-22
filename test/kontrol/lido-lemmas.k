@@ -85,6 +85,10 @@ module LIDO-LEMMAS
     // >>Int
     rule [shift-to-div]: X >>Int N => X /Int (2 ^Int N) [simplification(60), concrete(N)]
 
+    // bool2Word
+    rule [bool2Word-lt-true]: bool2Word(_:Bool) <Int X:Int => true      requires 1 <Int X [simplification, concrete(X)]
+    rule [bool2Word-lt-one]:  bool2Word(B:Bool) <Int 1     => notBool B                   [simplification]
+
     //
     // .Bytes
     //
