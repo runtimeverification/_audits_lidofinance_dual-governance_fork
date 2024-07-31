@@ -3,8 +3,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import "./EmergencyProtectedTimelock.sol";
-import "./Escrow.sol";
+import "./EmergencyProtectedTimelockModel.sol";
+import "./EscrowModel.sol";
 
 /**
  * @title Dual Governance Mechanism
@@ -13,7 +13,7 @@ import "./Escrow.sol";
  */
 
 // DualGovernance contract to handle proposal submissions and lifecycle management.
-contract DualGovernance {
+contract DualGovernanceModel {
     enum State {
         Normal,
         VetoSignalling,
@@ -22,13 +22,12 @@ contract DualGovernance {
         RageQuit
     }
 
-    EmergencyProtectedTimelock public emergencyProtectedTimelock;
-    Escrow public signallingEscrow;
-    Escrow public rageQuitEscrow;
+    EmergencyProtectedTimelockModel public emergencyProtectedTimelock;
+    EscrowModel public signallingEscrow;
+    EscrowModel public rageQuitEscrow;
     address public fakeETH;
 
     // State Variables
-    State public currentState;
     mapping(address => bool) public proposers;
     mapping(address => bool) public admin_proposers;
     uint256 public lastStateChangeTime;
@@ -36,6 +35,8 @@ contract DualGovernance {
     uint256 public lastStateReactivationTime;
     uint256 public lastVetoSignallingTime;
     uint256 public rageQuitSequenceNumber;
+
+    State public currentState;
 
     // Constants
     uint256 public constant FIRST_SEAL_RAGE_QUIT_SUPPORT = 10 ** 16; // Threshold required for transition from Normal to Veto Signalling state (1%).
@@ -52,8 +53,8 @@ contract DualGovernance {
         currentState = State.Normal;
         lastStateChangeTime = block.timestamp;
         fakeETH = _fakeETH;
-        emergencyProtectedTimelock = new EmergencyProtectedTimelock(address(this), emergencyProtectionTimelock);
-        signallingEscrow = new Escrow(address(this), _fakeETH);
+        emergencyProtectedTimelock = new EmergencyProtectedTimelockModel(address(this), emergencyProtectionTimelock);
+        signallingEscrow = new EscrowModel(address(this), _fakeETH);
     }
 
     // Operations
@@ -62,7 +63,7 @@ contract DualGovernance {
      * Proposals can be submitted when in the Normal state or during Veto Signalling; however they cannot be executed in Veto Signalling.
      */
     function submitProposal(ExecutorCall[] calldata calls) external returns (uint256 proposalId) {
-        activateNextState();
+        // activateNextState();
 
         require(proposers[msg.sender], "Caller is not authorized to submit proposals.");
         require(calls.length != 0, "Empty calls.");
@@ -79,7 +80,7 @@ contract DualGovernance {
      * Scheduling is allowed in Normal and Veto Cooldown states to prepare proposals for decision-making.
      */
     function scheduleProposal(uint256 proposalId) external {
-        activateNextState();
+        // activateNextState();
 
         require(
             currentState == State.Normal || currentState == State.VetoCooldown,
@@ -98,7 +99,7 @@ contract DualGovernance {
 
     // Cancel all non-executed proposals.
     function cancelAllPendingProposals() external {
-        activateNextState();
+        // activateNextState();
 
         require(admin_proposers[msg.sender], "Caller is not admin proposers.");
         require(
@@ -117,7 +118,7 @@ contract DualGovernance {
     function calculateDynamicTimelock(uint256 rageQuitSupport) public pure returns (uint256) {
         if (rageQuitSupport <= FIRST_SEAL_RAGE_QUIT_SUPPORT) {
             return 0;
-        } else if (rageQuitSupport < SECOND_SEAL_RAGE_QUIT_SUPPORT) {
+        } else if (rageQuitSupport <= SECOND_SEAL_RAGE_QUIT_SUPPORT) {
             return linearInterpolation(rageQuitSupport);
         } else {
             return DYNAMIC_TIMELOCK_MAX_DURATION;
@@ -132,6 +133,13 @@ contract DualGovernance {
     function linearInterpolation(uint256 rageQuitSupport) private pure returns (uint256) {
         uint256 L_min = DYNAMIC_TIMELOCK_MIN_DURATION;
         uint256 L_max = DYNAMIC_TIMELOCK_MAX_DURATION;
+        // Assumption: No underflow
+        require(FIRST_SEAL_RAGE_QUIT_SUPPORT <= rageQuitSupport);
+        // Assumption: No overflow
+        require(
+            ((rageQuitSupport - FIRST_SEAL_RAGE_QUIT_SUPPORT) * (L_max - L_min)) / (L_max - L_min)
+                == (rageQuitSupport - FIRST_SEAL_RAGE_QUIT_SUPPORT)
+        );
         return L_min
             + ((rageQuitSupport - FIRST_SEAL_RAGE_QUIT_SUPPORT) * (L_max - L_min))
                 / (SECOND_SEAL_RAGE_QUIT_SUPPORT - FIRST_SEAL_RAGE_QUIT_SUPPORT);
@@ -149,7 +157,7 @@ contract DualGovernance {
             signallingEscrow.startRageQuit();
             rageQuitSequenceNumber++;
             rageQuitEscrow = signallingEscrow;
-            signallingEscrow = new Escrow(address(this), fakeETH);
+            signallingEscrow = new EscrowModel(address(this), fakeETH);
         }
 
         lastStateChangeTime = block.timestamp;
@@ -180,6 +188,11 @@ contract DualGovernance {
     // State Transitions
 
     function activateNextState() public {
+        // Assumption: various time stamps are in the past
+        require(lastStateChangeTime <= block.timestamp);
+        require(lastSubStateActivationTime <= block.timestamp);
+        require(lastStateReactivationTime <= block.timestamp);
+
         uint256 rageQuitSupport = signallingEscrow.getRageQuitSupport();
 
         State previousState;
@@ -224,12 +237,14 @@ contract DualGovernance {
 
         // Check the conditions for transitioning to RageQuit or Veto Deactivation based on the time elapsed and support level.
         if (
-            block.timestamp - lastStateChangeTime > DYNAMIC_TIMELOCK_MAX_DURATION
+            block.timestamp != lastStateChangeTime
+                && block.timestamp - lastStateChangeTime > DYNAMIC_TIMELOCK_MAX_DURATION
                 && rageQuitSupport > SECOND_SEAL_RAGE_QUIT_SUPPORT
         ) {
             transitionState(State.RageQuit);
         } else if (
-            block.timestamp - lastStateChangeTime > calculateDynamicTimelock(rageQuitSupport)
+            block.timestamp != lastStateChangeTime
+                && block.timestamp - lastStateChangeTime > calculateDynamicTimelock(rageQuitSupport)
                 && block.timestamp - Math.max(lastStateChangeTime, lastStateReactivationTime)
                     > VETO_SIGNALLING_MIN_ACTIVE_DURATION
         ) {
@@ -247,7 +262,8 @@ contract DualGovernance {
         uint256 elapsed = block.timestamp - lastSubStateActivationTime;
         // Check the conditions for transitioning to VetoCooldown or back to VetoSignalling
         if (
-            block.timestamp - lastStateChangeTime <= calculateDynamicTimelock(rageQuitSupport)
+            block.timestamp == lastStateChangeTime
+                || block.timestamp - lastStateChangeTime <= calculateDynamicTimelock(rageQuitSupport)
                 || rageQuitSupport > SECOND_SEAL_RAGE_QUIT_SUPPORT
         ) {
             exitSubState(State.VetoSignalling);
@@ -264,7 +280,7 @@ contract DualGovernance {
         require(currentState == State.VetoCooldown, "Must be in Veto Cooldown state.");
 
         // Ensure the Veto Cooldown has lasted for at least the minimum duration.
-        if (block.timestamp - lastStateChangeTime > VETO_COOLDOWN_DURATION) {
+        if (block.timestamp != lastStateChangeTime && block.timestamp - lastStateChangeTime > VETO_COOLDOWN_DURATION) {
             // Depending on the level of rage quit support, transition to Normal or Veto Signalling.
             if (rageQuitSupport <= FIRST_SEAL_RAGE_QUIT_SUPPORT) {
                 transitionState(State.Normal);
@@ -279,7 +295,7 @@ contract DualGovernance {
      * Checks if withdrawal process is complete, cooldown period expired.
      * Transitions to VetoCooldown if support has decreased below the threshold; otherwise, transitions to VetoSignalling.
      */
-    function fromRageQuit(uint256 rageQuitSupport) private {
+    function fromRageQuit(uint256 rageQuitSupport) public {
         require(currentState == State.RageQuit, "Must be in Rage Quit state.");
 
         // Check if the withdrawal process is completed and if the RageQuitExtensionDelay has elapsed

@@ -1,6 +1,8 @@
+requires "evm.md"
 requires "foundry.md"
 
 module LIDO-LEMMAS
+    imports EVM
     imports FOUNDRY
     imports INT-SYMBOLIC
     imports MAP-SYMBOLIC
@@ -64,6 +66,10 @@ module LIDO-LEMMAS
       requires #rangeUInt(256, A) andBool #rangeUInt(256, (-1) *Int B)
       [concrete(B), simplification, comm]
 
+    rule chop (0 -Int A) ==Int B => A ==Int (pow256 -Int B) modInt pow256
+      requires #rangeUInt(256, A) andBool #rangeUInt(256, B)
+      [concrete(B), simplification, comm]
+
     // *Int
     rule A *Int B ==Int 0 => A ==Int 0 orBool B ==Int 0 [simplification]
 
@@ -78,6 +84,7 @@ module LIDO-LEMMAS
     // Further arithmetic
     rule ( X *Int Y ) /Int Y => X requires Y =/=Int 0              [simplification, preserves-definedness]
     rule ( X ==Int ( X *Int Y ) /Word Y ) orBool Y ==Int 0 => true [simplification, preserves-definedness]
+    rule ( 0 ==Int          0   /Word Y ) orBool Y ==Int 0 => true [simplification, preserves-definedness]
 
     rule A <=Int B /Int C =>         A  *Int C <=Int B requires 0 <Int C [simplification, preserves-definedness]
     rule A  <Int B /Int C => (A +Int 1) *Int C <=Int B requires 0 <Int C [simplification, preserves-definedness]
@@ -129,6 +136,33 @@ module LIDO-LEMMAS
     rule [memUpdate-concat-in-left]: (B1 +Bytes B2) [ S := B ] => (B1 [S := B]) +Bytes B2
       requires 0 <=Int S andBool S +Int lengthBytes(B) <=Int lengthBytes(B1)
       [simplification(45)]
+
+    //
+    // Equality of +Bytes
+    //
+    rule { B:Bytes #Equals B1:Bytes +Bytes B2:Bytes } =>
+           { #range ( B, 0, lengthBytes(B1) ) #Equals B1 } #And
+           { #range ( B, lengthBytes(B1), lengthBytes(B) -Int lengthBytes(B1) ) #Equals B2 }
+      requires lengthBytes(B1) <=Int lengthBytes(B)
+      [simplification(60), concrete(B, B1)]
+
+    rule { B1:Bytes +Bytes B2:Bytes #Equals B } =>
+           { #range ( B, 0, lengthBytes(B1) ) #Equals B1 } #And
+           { #range ( B, lengthBytes(B1), lengthBytes(B) -Int lengthBytes(B1) ) #Equals B2 }
+      requires lengthBytes(B1) <=Int lengthBytes(B)
+      [simplification(60), concrete(B, B1)]
+
+    rule { B:Bytes #Equals #buf( N, X:Int ) +Bytes B2:Bytes } =>
+           { X #Equals #asWord ( #range ( B, 0, N ) ) } #And
+           { #range ( B, N, lengthBytes(B) -Int N ) #Equals B2 }
+      requires N <=Int lengthBytes(B)
+      [simplification(60), concrete(B, N)]
+
+    rule { #buf( N, X:Int ) +Bytes B2:Bytes #Equals B } =>
+           { X #Equals #asWord ( #range ( B, 0, N ) ) } #And
+           { #range ( B, N, lengthBytes(B) -Int N ) #Equals B2 }
+      requires N <=Int lengthBytes(B)
+      [simplification(60), concrete(B, N)]
 
     //
     // Specific simplifications
@@ -211,6 +245,34 @@ module LIDO-LEMMAS
     rule #asWord ( BUF1 +Bytes BUF2 ) => #asWord ( BUF2 )
         requires #asWord ( BUF1 ) ==Int 0
         [simplification, concrete(BUF1)]
+
+    //
+    // Rules
+    //
+
+    // rule [create-valid-enhanced]:
+    //     <k> CREATE VALUE MEMSTART MEMWIDTH
+    //     => #accessAccounts #newAddr(ACCT, NONCE)
+    //     ~> #checkCreate ACCT VALUE
+    //     ~> #create ACCT #newAddr(ACCT, NONCE) VALUE #range(LM, MEMSTART, MEMWIDTH)
+    //     ~> #codeDeposit #newAddr(ACCT, NONCE)
+    //     ...
+    //     </k>
+    //     <id> ACCT </id>
+    //     <localMem> LM </localMem>
+    //     <accounts>
+    //       <account>
+    //         <acctID> ACCT </acctID>
+    //         <nonce> NONCE </nonce>
+    //         ...
+    //       </account>
+    //       ACCOUNTS_REST
+    //     </accounts>
+    //     <schedule> SCHED </schedule>
+    // requires #hasValidInitCode(MEMWIDTH, SCHED)
+    //   ensures notBool ( #newAddr(ACCT, NONCE) ==Int ACCT )
+    //   andBool notBool ( <acctID> #newAddr(ACCT, NONCE) </acctID> in_keys ( ACCOUNTS_REST:AccountCellMap ) )
+    // [priority(30), preserves-definedness]
 
 endmodule
 

@@ -28,10 +28,12 @@ kontrol_prove() {
   notif "Kontrol Prove"
   # shellcheck disable=SC2086
   run kontrol prove \
+    --verbose \
     --max-depth $max_depth \
     --max-iterations $max_iterations \
     --smt-timeout $smt_timeout \
     --workers $workers \
+    --max-frontier-parallel $max_frontier_parallel \
     $reinit \
     $bug_report \
     $break_on_calls \
@@ -98,7 +100,24 @@ regen=
 test_list=()
 if [ "$SCRIPT_TESTS" == true ]; then
     # Here go the list of tests to execute with the `script` option
-    test_list=( "VetoSignallingTest.testTransitionNormalToVetoSignalling" )
+    test_list=(
+        "VetoSignallingTest.testTransitionNormalToVetoSignalling"
+        "VetoSignallingTest.testVetoSignallingInvariantsHoldInitially"
+        "EscrowAccountingTest.testRageQuitSupport"
+        "EscrowAccountingTest.testEscrowInvariantsHoldInitially"
+        "EscrowAccountingTest.testLockStEth"
+        "EscrowAccountingTest.testUnlockStEth"
+        "EscrowOperationsTest.testCannotUnlockBeforeMinLockTime"
+        "EscrowOperationsTest.testCannotLockUnlockInRageQuitEscrowState"
+        "EscrowOperationsTest.testCannotWithdrawBeforeEthClaimTimelockElapsed"
+        "ProposalOperationsTest.testCannotProposeInInvalidState"
+        "ProposalOperationsTest.testCannotScheduleInInvalidStates"
+        "ProposalOperationsTest.testCannotScheduleSubmissionAfterLastVetoSignalling"
+        "ProposalOperationsTest.testCanceledOrExecutedActionsCannotBeRescheduled"
+        "ProposalOperationsTest.testCannotScheduleBeforeMinTimelock"
+        "ProposalOperationsTest.testSchedulingSuccess"
+        "ProposalOperationsTest.testCannotExecuteBeforeEmergencyProtectionTimelock"
+    )
 elif [ "$CUSTOM_TESTS" != 0 ]; then
     test_list=( "${@:${CUSTOM_TESTS}}" )
 fi
@@ -115,7 +134,7 @@ done
 #########################
 max_depth=10000
 max_iterations=10000
-smt_timeout=100000
+smt_timeout=1000
 max_workers=16 # Should be at most (M - 8) / 8 in a machine with M GB of RAM
 # workers is the minimum between max_workers and the length of test_list
 # unless no test arguments are provided, in which case we default to max_workers
@@ -124,6 +143,7 @@ if [ "$CUSTOM_TESTS" == 0 ] && [ "$SCRIPT_TESTS" == false ]; then
 else
     workers=$((${#test_list[@]}>max_workers ? max_workers : ${#test_list[@]}))
 fi
+max_frontier_parallel=6
 reinit=--reinit
 reinit=
 break_on_calls=--no-break-on-calls
