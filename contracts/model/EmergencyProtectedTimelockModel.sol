@@ -26,7 +26,7 @@ struct Proposal {
 
 // This contract manages the timelocking of proposals with emergency intervention capabilities.
 // It provides controls for entering and managing emergency states as well as executing proposals under normal and emergency conditions.
-contract EmergencyProtectedTimelock {
+contract EmergencyProtectedTimelockModel {
     // Addresses associated with governance roles and permissions.
     address public governance;
     address public emergencyGovernance;
@@ -124,11 +124,13 @@ contract EmergencyProtectedTimelock {
     function cancelAllNonExecutedProposals() public {
         require(msg.sender == governance, "Caller is not authorized to cancel proposal.");
 
-        // Loop through all the proposals stored in the contract.
-        for (uint256 i = 0; i < nextProposalId; i++) {
-            // Ensure that only proposals in 'Submitted' or 'Scheduled' status are canceled.
-            if (proposals[i].status != ProposalStatus.Executed) {
-                proposals[i].status = ProposalStatus.Canceled;
+        if (nextProposalId > 0) {
+            // Loop through all the proposals stored in the contract.
+            for (uint256 i = 0; i < nextProposalId; i++) {
+                // Ensure that only proposals in 'Submitted' or 'Scheduled' status are canceled.
+                if (proposals[i].status != ProposalStatus.Executed) {
+                    proposals[i].status = ProposalStatus.Canceled;
+                }
             }
         }
     }

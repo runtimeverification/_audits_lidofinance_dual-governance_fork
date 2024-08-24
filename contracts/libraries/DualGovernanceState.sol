@@ -2,6 +2,7 @@
 pragma solidity 0.8.23;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IEscrow} from "../interfaces/IEscrow.sol";
 import {ISealable} from "../interfaces/ISealable.sol";
@@ -297,14 +298,14 @@ library DualGovernanceState {
         DualGovernanceConfig memory config,
         uint256 rageQuitSupport
     ) private pure returns (bool) {
-        return rageQuitSupport > config.firstSealRageQuitSupport;
+        return rageQuitSupport >= config.firstSealRageQuitSupport;
     }
 
     function _isSecondSealRageQuitSupportCrossed(
         DualGovernanceConfig memory config,
         uint256 rageQuitSupport
     ) private pure returns (bool) {
-        return rageQuitSupport > config.secondSealRageQuitSupport;
+        return rageQuitSupport >= config.secondSealRageQuitSupport;
     }
 
     function _isDynamicTimelockMaxDurationPassed(
@@ -327,7 +328,17 @@ library DualGovernanceState {
         Store storage self,
         DualGovernanceConfig memory config
     ) private view returns (bool) {
-        return Timestamps.now() > config.vetoSignallingMinActiveDuration.addTo(self.vetoSignallingReactivationTime);
+        return Timestamps.now()
+            > config.vetoSignallingMinActiveDuration.addTo(
+                Timestamp.wrap(
+                    uint40(
+                        Math.max(
+                            Timestamp.unwrap(self.vetoSignallingActivationTime),
+                            Timestamp.unwrap(self.vetoSignallingReactivationTime)
+                        )
+                    )
+                )
+            );
     }
 
     function _isVetoSignallingDeactivationMaxDurationPassed(
@@ -381,15 +392,15 @@ library DualGovernanceState {
             return Durations.ZERO;
         }
 
-        if (rageQuitSupport >= secondSealRageQuitSupport) {
-            return dynamicTimelockMaxDuration;
+        if (rageQuitSupport < secondSealRageQuitSupport) {
+            return dynamicTimelockMinDuration
+                + Durations.from(
+                    (rageQuitSupport - firstSealRageQuitSupport)
+                        * (dynamicTimelockMaxDuration - dynamicTimelockMinDuration).toSeconds()
+                        / (secondSealRageQuitSupport - firstSealRageQuitSupport)
+                );
         }
 
-        duration_ = dynamicTimelockMinDuration
-            + Durations.from(
-                (rageQuitSupport - firstSealRageQuitSupport)
-                    * (dynamicTimelockMaxDuration - dynamicTimelockMinDuration).toSeconds()
-                    / (secondSealRageQuitSupport - firstSealRageQuitSupport)
-            );
+        return dynamicTimelockMaxDuration;
     }
 }

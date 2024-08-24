@@ -9,10 +9,11 @@ interface IStETH is IERC20 {
 
     function getPooledEthByShares(uint256 sharesAmount) external view returns (uint256);
 
-    function transferShares(address to, uint256 amount) external;
+    function transferShares(address to, uint256 amount) external returns (uint256);
     function transferSharesFrom(
         address _sender,
         address _recipient,
         uint256 _sharesAmount
     ) external returns (uint256);
+    function sharesOf(address _account) external view returns (uint256);
 }
