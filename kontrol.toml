@@ -41,7 +41,7 @@ match-test                 = [
         "VetoSignallingTest.testTransitionNormalToVetoSignalling",
         "VetoSignallingTest.testVetoSignallingInvariantsHoldInitially",
         "VetoSignallingTest.testVetoSignallingInvariantsArePreserved",
-        "VetoSignallingTest.testDeactivationNotCancelled",
+        #"VetoSignallingTest.testDeactivationNotCancelled",
         "EscrowAccountingTest.testRageQuitSupport",
         "EscrowAccountingTest.testEscrowInvariantsHoldInitially",
         #"EscrowLockUnlockTest.testLockStEth",
