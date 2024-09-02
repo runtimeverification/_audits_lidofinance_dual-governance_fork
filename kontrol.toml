@@ -6,6 +6,7 @@ verbose                    = true
 debug                      = false
 require                    = 'test/kontrol/lido-lemmas.k'
 module-import              = 'VetoSignallingTest:LIDO-LEMMAS'
+auxiliary-lemmas           = true
 
 [prove.default]
 foundry-project-root       = '.'
