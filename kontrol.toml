@@ -58,5 +58,5 @@ match-test                 = [
 
 [show.default]
 foundry-project-root       = '.'
-verbose                    = true
+verbose                    = false
 debug                      = false

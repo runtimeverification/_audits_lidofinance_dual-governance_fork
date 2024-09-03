@@ -1,7 +1,7 @@
 requires "evm.md"
 requires "foundry.md"
 
-module LIDO-LEMMAS
+module LIDO-LEMMAS [symbolic]
     imports EVM
     imports FOUNDRY
     imports INT-SYMBOLIC
@@ -69,6 +69,26 @@ module LIDO-LEMMAS
     //   ensures notBool ( #newAddr(ACCT, NONCE) ==Int ACCT )
     //   andBool notBool ( <acctID> #newAddr(ACCT, NONCE) </acctID> in_keys ( ACCOUNTS_REST:AccountCellMap ) )
     // [priority(30), preserves-definedness]
+
+    //
+    //  Syntactics
+    //
+
+    // rule A <=Int B => true requires C <=Int B andBool A <=Int C [simplification, concrete(A, C), syntactic(1)]
+    // rule A <=Int B => true requires C  <Int B andBool A <=Int C [simplification, concrete(A, C), syntactic(1)]
+
+    // rule A <=Int B => true requires A <=Int C andBool C <=Int B [simplification, concrete(B, C), syntactic(1)]
+    // rule A <=Int B => true requires A  <Int C andBool C <=Int B [simplification, concrete(B, C), syntactic(1)]
+
+    // rule A <Int B => true requires A  <Int C andBool C <Int B [simplification, concrete(B, C), syntactic(1)]
+    // rule A <Int B => true requires A <=Int C andBool C <Int B [simplification, concrete(B, C), syntactic(1)]
+
+    // rule A <Int B => true requires C  <Int B andBool A <Int C [simplification, concrete(A, C), syntactic(1)]
+    // rule A <Int B => true requires C <=Int B andBool A <Int C [simplification, concrete(A, C), syntactic(1)]
+
+    // rule A <=Int B => A <Int B requires notBool (B ==Int A) [simplification, concrete(A), syntactic(1)]
+
+    // rule notBool (A ==Int B) => true requires B <Int A [simplification, concrete(B), syntactic(1)]
 
 endmodule
 
@@ -184,7 +204,5 @@ module LIDO-LEMMAS-SPEC
           requires 0 <=Int WORD5 andBool WORD5 <Int 2 ^Int 35
            andBool 0 <=Int WORD6 andBool WORD6 <Int 2 ^Int 35
            andBool 0 <=Int WORD7 andBool WORD7 <Int 256
-
-    claim [length-bytestack]: <k> runLemma ( lengthBytes ( #padToWidth ( 32 , #asByteStack ( ( ( ( ( ( ?WORD0:Int *Int VV0_amount_114b9705:Int ) /Int ?WORD:Int ) +Int ?WORD8:Int ) |Int #asWord ( #buf ( 16 , ?WORD9:Int ) +Bytes b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ) ) /Int pow128 ) ) ) ) ) => doneLemma ( 32 ) ... </k>
 
 endmodule
