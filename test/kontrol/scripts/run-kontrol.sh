@@ -5,7 +5,7 @@ SCRIPT_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 # shellcheck source=/dev/null
 source "$SCRIPT_HOME/common.sh"
 export RUN_KONTROL=true
-CUSTOM_FOUNDRY_PROFILE=default
+CUSTOM_FOUNDRY_PROFILE=kprove
 export FOUNDRY_PROFILE=$CUSTOM_FOUNDRY_PROFILE
 export OUT_DIR=kout # out dir of $FOUNDRY_PROFILE
 parse_args "$@"
