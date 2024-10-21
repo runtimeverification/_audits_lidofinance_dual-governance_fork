@@ -1,45 +1,86 @@
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
-import "contracts/Configuration.sol";
+import "contracts/ImmutableDualGovernanceConfigProvider.sol";
 import "contracts/DualGovernance.sol";
 import "contracts/EmergencyProtectedTimelock.sol";
 import "contracts/Escrow.sol";
 
+import {DualGovernanceConfig} from "contracts/libraries/DualGovernanceConfig.sol";
 import {addTo, Duration, Durations} from "contracts/types/Duration.sol";
 import {Timestamp, Timestamps} from "contracts/types/Timestamp.sol";
+import {PercentD16} from "contracts/types/PercentD16.sol";
 
 import "contracts/model/StETHModel.sol";
 import "contracts/model/WithdrawalQueueModel.sol";
 import "contracts/model/WstETHAdapted.sol";
+import "contracts/ResealManager.sol";
 
 import {EscrowInvariants} from "test/kontrol/EscrowInvariants.sol";
+import {State as EscrowSt} from "contracts/libraries/EscrowState.sol";
 
 contract EscrowAccountingTest is EscrowInvariants {
-    Configuration config;
+    ImmutableDualGovernanceConfigProvider config;
+    DualGovernance dualGovernance;
+    EmergencyProtectedTimelock timelock;
     StETHModel stEth;
     WstETHAdapted wstEth;
     WithdrawalQueueModel withdrawalQueue;
+    Escrow escrowMasterCopy;
     Escrow escrow;
+    ResealManager resealManager;
+
+    DualGovernanceConfig.Context governanceConfig;
+    EmergencyProtectedTimelock.SanityCheckParams timelockSanityCheckParams;
+    DualGovernance.ExternalDependencies dependencies;
+    DualGovernance.SanityCheckParams dgSanityCheckParams;
 
     function _setUpInitialState() public {
         vm.chainId(1); // Set block.chainid so it's not symbolic
 
         stEth = new StETHModel();
         wstEth = new WstETHAdapted(IStETH(stEth));
-        withdrawalQueue = new WithdrawalQueueModel();
+        withdrawalQueue = new WithdrawalQueueModel(IStETH(stEth));
 
         // Placeholder addresses
         address adminExecutor = address(uint160(uint256(keccak256("adminExecutor"))));
         address emergencyGovernance = address(uint160(uint256(keccak256("emergencyGovernance"))));
-        address dualGovernanceAddress = address(uint160(uint256(keccak256("dualGovernance"))));
 
-        config = new Configuration(adminExecutor, emergencyGovernance, new address[](0));
+        governanceConfig = DualGovernanceConfig.Context({
+            firstSealRageQuitSupport: PercentsD16.fromBasisPoints(3_00), // 3%
+            secondSealRageQuitSupport: PercentsD16.fromBasisPoints(15_00), // 15%
+            //
+            minAssetsLockDuration: Durations.from(5 hours),
+            //
+            vetoSignallingMinDuration: Durations.from(3 days),
+            vetoSignallingMaxDuration: Durations.from(30 days),
+            vetoSignallingMinActiveDuration: Durations.from(5 hours),
+            vetoSignallingDeactivationMaxDuration: Durations.from(5 days),
+            //
+            vetoCooldownDuration: Durations.from(4 days),
+            //
+            rageQuitExtensionPeriodDuration: Durations.from(7 days),
+            rageQuitEthWithdrawalsMinDelay: Durations.from(30 days),
+            rageQuitEthWithdrawalsMaxDelay: Durations.from(180 days),
+            rageQuitEthWithdrawalsDelayGrowth: Durations.from(15 days)
+        });
 
-        Escrow escrowMasterCopy = new Escrow(address(stEth), address(wstEth), address(withdrawalQueue), address(config));
+        config = new ImmutableDualGovernanceConfigProvider(governanceConfig);
+        timelock = new EmergencyProtectedTimelock(timelockSanityCheckParams, adminExecutor);
+        resealManager = new ResealManager(timelock);
+
+        //DualGovernance.ExternalDependencies memory dependencies;
+        dependencies.stETH = stEth;
+        dependencies.wstETH = wstEth;
+        dependencies.withdrawalQueue = withdrawalQueue;
+        dependencies.timelock = timelock;
+        dependencies.resealManager = resealManager;
+        dependencies.configProvider = config;
+
+        dualGovernance = new DualGovernance(dependencies, dgSanityCheckParams);
+        escrowMasterCopy = new Escrow(stEth, wstEth, withdrawalQueue, dualGovernance, 1);
         escrow = Escrow(payable(Clones.clone(address(escrowMasterCopy))));
-        escrow.initialize(dualGovernanceAddress);
 
         // ?STORAGE
         // ?WORD: totalPooledEther
@@ -64,7 +105,7 @@ contract EscrowAccountingTest is EscrowInvariants {
         // ?WORD9: rageQuitExtensionDelay
         // ?WORD10: rageQuitWithdrawalsTimelock
         // ?WORD11: rageQuitTimelockStartedAt
-        this.escrowStorageSetup(escrow, DualGovernance(dualGovernanceAddress), EscrowState(currentState));
+        this.escrowStorageSetup(escrow, EscrowSt(currentState));
     }
 
     function testRageQuitSupport() public {
@@ -77,7 +118,7 @@ contract EscrowAccountingTest is EscrowInvariants {
         uint256 expectedRageQuitSupport =
             (totalFundsLocked + finalizedETH) * 1e18 / (stEth.totalSupply() + finalizedETH);
 
-        assert(escrow.getRageQuitSupport() == expectedRageQuitSupport);
+        assert(PercentD16.unwrap(escrow.getRageQuitSupport()) == expectedRageQuitSupport);
     }
 
     function testEscrowInvariantsHoldInitially() public {
@@ -124,9 +165,8 @@ contract EscrowAccountingTest is EscrowInvariants {
     function testRequestNextWithdrawalsBatch(uint256 maxBatchSize) public {
         _setUpGenericState();
 
-        vm.assume(EscrowState(_getCurrentState(escrow)) == EscrowState.RageQuitEscrow);
-        vm.assume(maxBatchSize >= config.MIN_WITHDRAWALS_BATCH_SIZE());
-        vm.assume(maxBatchSize <= config.MAX_WITHDRAWALS_BATCH_SIZE());
+        vm.assume(EscrowSt(_getCurrentState(escrow)) == EscrowSt.RageQuitEscrow);
+        vm.assume(maxBatchSize >= escrow.MIN_WITHDRAWALS_BATCH_SIZE());
 
         this.escrowInvariants(Mode.Assume, escrow);
 
@@ -142,8 +182,8 @@ contract EscrowAccountingTest is EscrowInvariants {
         address sender = address(uint160(uint256(keccak256("sender"))));
         vm.assume(stEth.sharesOf(sender) < ethUpperBound);
 
-        vm.assume(EscrowState(_getCurrentState(escrow)) == EscrowState.RageQuitEscrow);
-        vm.assume(_getRageQuitTimelockStartedAt(escrow) == 0);
+        vm.assume(EscrowSt(_getCurrentState(escrow)) == EscrowSt.RageQuitEscrow);
+        vm.assume(_getRageQuitExtensionPeriodStartedAt(escrow) == 0);
 
         this.escrowInvariants(Mode.Assume, escrow);
         this.escrowUserInvariants(Mode.Assume, escrow, sender);
