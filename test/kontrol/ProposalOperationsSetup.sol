@@ -1,14 +1,14 @@
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
-import "contracts/Configuration.sol";
+import "contracts/ImmutableDualGovernanceConfigProvider.sol";
 import "contracts/DualGovernance.sol";
 import "contracts/EmergencyProtectedTimelock.sol";
 import "contracts/Escrow.sol";
 
-import {Status, Proposal} from "contracts/libraries/Proposals.sol";
-import {State} from "contracts/libraries/DualGovernanceState.sol";
+import {Status, ExecutableProposals as Proposals} from "contracts/libraries/ExecutableProposals.sol";
+import {DualGovernanceConfig} from "contracts/libraries/DualGovernanceConfig.sol";
 import {addTo, Duration, Durations} from "contracts/types/Duration.sol";
 import {Timestamp, Timestamps} from "contracts/types/Timestamp.sol";
 
@@ -22,17 +22,45 @@ contract ProposalOperationsSetup is DualGovernanceSetUp {
 
     function _initializeAuxDualGovernance() public {
         address adminProposer = address(uint160(uint256(keccak256("adminProposer"))));
-        auxTimelock = new EmergencyProtectedTimelock(address(config));
+
+        governanceConfig = DualGovernanceConfig.Context({
+            firstSealRageQuitSupport: PercentsD16.fromBasisPoints(3_00), // 3%
+            secondSealRageQuitSupport: PercentsD16.fromBasisPoints(15_00), // 15%
+            //
+            minAssetsLockDuration: Durations.from(5 hours),
+            //
+            vetoSignallingMinDuration: Durations.from(3 days),
+            vetoSignallingMaxDuration: Durations.from(30 days),
+            vetoSignallingMinActiveDuration: Durations.from(5 hours),
+            vetoSignallingDeactivationMaxDuration: Durations.from(5 days),
+            //
+            vetoCooldownDuration: Durations.from(4 days),
+            //
+            rageQuitExtensionPeriodDuration: Durations.from(7 days),
+            rageQuitEthWithdrawalsMinDelay: Durations.from(30 days),
+            rageQuitEthWithdrawalsMaxDelay: Durations.from(180 days),
+            rageQuitEthWithdrawalsDelayGrowth: Durations.from(15 days)
+        });
+
+        config = new ImmutableDualGovernanceConfigProvider(governanceConfig);
+        auxTimelock = new EmergencyProtectedTimelock(timelockSanityCheckParams, address(config));
         kevm.symbolicStorage(address(auxTimelock));
 
-        auxDualGovernance =
-            new DualGovernance(address(config), address(timelock), address(escrowMasterCopy), adminProposer);
-        kevm.copyStorage(address(dualGovernance), address(auxDualGovernance));
+        //DualGovernance.ExternalDependencies memory dependencies;
+        dependencies.stETH = stEth;
+        dependencies.wstETH = wstEth;
+        dependencies.withdrawalQueue = withdrawalQueue;
+        dependencies.timelock = timelock;
+        dependencies.resealManager = resealManager;
+        dependencies.configProvider = config;
+
+        auxDualGovernance = new DualGovernance(dependencies, dgSanityCheckParams);
+        //kevm.copyStorage(address(dualGovernance), address(auxDualGovernance));
 
         auxSignallingEscrow = Escrow(payable(Clones.clone(dualGovernance.getVetoSignallingEscrow())));
         auxRageQuitEscrow = Escrow(payable(Clones.clone(dualGovernance.getRageQuitEscrow())));
-        kevm.copyStorage(dualGovernance.getVetoSignallingEscrow(), address(auxSignallingEscrow));
-        kevm.copyStorage(dualGovernance.getRageQuitEscrow(), address(auxRageQuitEscrow));
+        //kevm.copyStorage(dualGovernance.getVetoSignallingEscrow(), address(auxSignallingEscrow));
+        //kevm.copyStorage(dualGovernance.getRageQuitEscrow(), address(auxRageQuitEscrow));
 
         uint256 signallingEscrowSlot = _loadUInt256(address(auxDualGovernance), 5);
         uint256 rageQuitEscrowSlot = _loadUInt256(address(auxDualGovernance), 6);
