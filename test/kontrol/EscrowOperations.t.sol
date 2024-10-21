@@ -1,4 +1,4 @@
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import {Duration, Durations} from "contracts/types/Duration.sol";
 import {Timestamp, Timestamps} from "contracts/types/Timestamp.sol";
@@ -34,14 +34,16 @@ contract EscrowOperationsTest is EscrowAccountingTest {
         vm.assume(_getLastAssetsLockTimestamp(escrow, sender) < timeUpperBound);
 
         AccountingRecord memory pre = this.saveAccountingRecord(sender, escrow);
-        vm.assume(pre.escrowState == EscrowState.SignallingEscrow);
+        vm.assume(pre.escrowState == EscrowSt.SignallingEscrow);
         vm.assume(pre.userSharesLocked <= pre.totalSharesLocked);
 
-        Timestamp lockPeriod = addTo(config.SIGNALLING_ESCROW_MIN_LOCK_TIME(), pre.userLastLockedTime);
+        Timestamp lockPeriod = addTo(config.MIN_ASSETS_LOCK_DURATION(), pre.userLastLockedTime);
 
         if (Timestamps.now() < lockPeriod) {
             vm.prank(sender);
-            vm.expectRevert(abi.encodeWithSelector(AssetsAccounting.AssetsUnlockDelayNotPassed.selector, lockPeriod));
+            vm.expectRevert(
+                abi.encodeWithSelector(AssetsAccounting.MinAssetsLockDurationNotPassed.selector, lockPeriod)
+            );
             escrow.unlockStETH();
         }
     }
@@ -70,7 +72,7 @@ contract EscrowOperationsTest is EscrowAccountingTest {
         this.signallingEscrowInvariants(Mode.Assume, escrow);
         this.escrowUserInvariants(Mode.Assume, escrow, sender);
 
-        if (pre.escrowState == EscrowState.RageQuitEscrow) {
+        if (pre.escrowState == EscrowSt.RageQuitEscrow) {
             vm.startPrank(sender);
             //vm.expectRevert("Cannot lock in current state.");
             bool lockSuccess = _tryLockStETH(amount);
@@ -90,7 +92,7 @@ contract EscrowOperationsTest is EscrowAccountingTest {
             vm.assume(afterLock.userShares < ethUpperBound);
             //vm.assume(afterLock.userLastLockedTime < timeUpperBound);
             vm.assume(afterLock.userSharesLocked <= afterLock.totalSharesLocked);
-            vm.assume(Timestamps.now() >= addTo(config.SIGNALLING_ESCROW_MIN_LOCK_TIME(), afterLock.userLastLockedTime));
+            vm.assume(Timestamps.now() >= addTo(config.MIN_ASSETS_LOCK_DURATION(), afterLock.userLastLockedTime));
 
             vm.prank(sender);
             escrow.unlockStETH();
@@ -100,7 +102,7 @@ contract EscrowOperationsTest is EscrowAccountingTest {
             this.escrowUserInvariants(Mode.Assert, escrow, sender);
 
             AccountingRecord memory post = this.saveAccountingRecord(sender, escrow);
-            assert(post.escrowState == EscrowState.SignallingEscrow);
+            assert(post.escrowState == EscrowSt.SignallingEscrow);
             assert(post.userShares == pre.userShares);
             assert(post.escrowShares == pre.escrowShares);
             assert(post.userSharesLocked == 0);
